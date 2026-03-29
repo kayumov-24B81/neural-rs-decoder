@@ -1,4 +1,7 @@
+import random
+
 import numpy as np
+import torch
 from reedsolo import rs_calc_syndromes
 
 
@@ -25,9 +28,33 @@ def compute_syndrome_bits(codeword: bytearray, nsym=32):
 
 
 def build_input(noisy: bytes, nsym=32):
+    """Build input for model (syndrome + zero mask)."""
     syndrome_bits = compute_syndrome_bits(noisy, nsym)
     zero_mask = get_zero_mask(noisy)
     return np.concatenate([syndrome_bits, zero_mask])
 
 
 # TODO: build input with soft information: syndrome + mask + LLR
+
+
+def save_model(model, path):
+    """Save model."""
+    torch.save(model.state_dict(), path)
+
+
+def load_model(model, path, device="cpu"):
+    """Load model."""
+    model.load_state_dict(torch.load(path, map_location=device))
+    model.to(device)
+    return model
+
+
+def set_seed(seed: int):
+    """Capture all sources of randomness for reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True)
