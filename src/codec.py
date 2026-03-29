@@ -23,12 +23,7 @@ class ClassicDecoder:
         self.nsym = nsym
         self.rsc = RSCodec(nsym)
 
-    def decode(
-        self,
-        noisy,
-        erase_pos=None,
-        original=None,
-    ):
+    def decode(self, noisy, erase_pos=None, **kwargs):
         """Decode received word, return decoded message or None on failure."""
         try:
             decoded, _, _ = self.rsc.decode(noisy, erase_pos=erase_pos)
@@ -44,7 +39,7 @@ class OracleDecoder:
         self.nsym = nsym
         self.decoder = ClassicDecoder(nsym)
 
-    def decode(self, noisy, original, erase_pos=None):
+    def decode(self, noisy, original=None, **kwargs):
         """Decode using true error positions as erasures."""
         noisy_arr = bytearray(noisy)
         orig_arr = bytearray(original)
@@ -74,7 +69,7 @@ class HybridDecoder:
         positions = (probs[0] > self.threshold).cpu().numpy()
         return [i for i, v in enumerate(positions) if v]
 
-    def decode(self, noisy, erase_pos=None, features=None, original=None):
+    def decode(self, noisy, features=None, erase_pos=None, **kwargs):
         """Decode using neural-predicted erasure positions, return None on failure."""
         if features is None:
             features = build_input(noisy, self.nsym)
