@@ -1,7 +1,7 @@
 import torch
 from reedsolo import ReedSolomonError, RSCodec
 
-from utils import build_input
+from .utils import build_input
 
 N = 255
 K = 223

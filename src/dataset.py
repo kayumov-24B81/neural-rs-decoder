@@ -4,8 +4,8 @@ import numpy as np
 from reedsolo import RSCodec, rs_calc_syndromes
 from torch.utils.data import Dataset
 
-from channel import qsc_erasure_channel
-from utils import bytes_to_bits, get_zero_mask
+from .channel import qsc_erasure_channel
+from .utils import bytes_to_bits, get_zero_mask
 
 
 class RSPositionDataset(Dataset):

@@ -11,3 +11,10 @@ target-version = ["py310"]
 [tool.isort]
 profile = "black"
 line_length = 100
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

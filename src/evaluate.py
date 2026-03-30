@@ -4,8 +4,8 @@ import time
 import numpy as np
 import torch
 
-from codec import encode
-from utils import bytes_to_bits
+from .codec import encode
+from .utils import bytes_to_bits
 
 K = 223  # encoded symbols
 
