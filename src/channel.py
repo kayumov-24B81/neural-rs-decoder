@@ -5,6 +5,7 @@ def qsc_erasure_channel(codeword: bytes, p_err: float, p_erase: float):
     """Simulates a QSC channel with erasures."""
     noisy = bytearray(codeword)
     erasures = []
+    errors = []
 
     for i in range(len(noisy)):
         r = random.random()
@@ -14,5 +15,6 @@ def qsc_erasure_channel(codeword: bytes, p_err: float, p_erase: float):
         elif r < p_erase + p_err:
             offset = random.randint(1, 254)
             noisy[i] = ((codeword[i] + offset) % 255) + 1  # ≠ original, ≠ 0
+            errors.append(i)
 
-    return bytes(noisy), erasures
+    return bytes(noisy), erasures, errors

@@ -33,7 +33,7 @@ class RSPositionDataset(Dataset):
         for _ in range(self.size):
             msg: bytes = os.urandom(self.msg_len)
             codeword: bytes = self.rsc.encode(msg)
-            noisy, _ = qsc_erasure_channel(codeword, self.p_err, self.p_erase)
+            noisy, _, _ = qsc_erasure_channel(codeword, self.p_err, self.p_erase)
 
             syndrome = rs_calc_syndromes(noisy, self.nsym)[1:]
             syndrome_bits = bytes_to_bits(bytes(syndrome))
