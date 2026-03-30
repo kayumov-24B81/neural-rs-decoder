@@ -12,6 +12,7 @@ def qsc_erasure_channel(codeword: bytes, p_err: float, p_erase: float):
             noisy[i] = 0
             erasures.append(i)
         elif r < p_erase + p_err:
-            noisy[i] = random.randint(0, 255)
+            offset = random.randint(1, 254)
+            noisy[i] = ((codeword[i] + offset) % 255) + 1  # ≠ original, ≠ 0
 
     return bytes(noisy), erasures
