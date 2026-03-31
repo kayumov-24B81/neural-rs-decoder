@@ -1,5 +1,6 @@
+import torch
 import torch.nn as nn
-from torchvision.ops import sigmoid_focal_loss
+import torch.nn.functional as F
 
 
 class BasePredictor(nn.Module):
@@ -53,9 +54,13 @@ class FocalLoss(nn.Module):
         self.gamma = gamma
 
     def forward(self, inputs, targets):
-        return sigmoid_focal_loss(
-            inputs, targets, alpha=self.alpha, gamma=self.gamma, reduction="mean"
-        )
+        p = torch.sigmoid(inputs)
+        bce = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
+        p_t = targets * p + (1 - targets) * (1 - p)
+        focal_weight = (1 - p_t) ** self.gamma
+        alpha_t = targets * self.alpha + (1 - targets) * (1 - self.alpha)
+        loss = alpha_t * focal_weight * bce
+        return loss.mean()
 
 
 def count_parameters(model):
