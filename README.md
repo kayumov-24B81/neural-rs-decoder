@@ -14,15 +14,15 @@ Message ──► RS(255,223) Encoder ──► Channel (AWGN/QSC) ──► Rec
                                            Syndrome ◄───────────┘
                                               │
                                     ┌─────────▼──────────┐
-                                    │   Neural Network    │
-                                    │  (error positions)  │
+                                    │   Neural Network   │
+                                    │  (error positions) │
                                     └─────────┬──────────┘
                                               │
                                       Erasure mask
                                               │
                                     ┌─────────▼──────────┐
-                                    │  Erasure Decoder    │
-                                    │   (up to 2t = 32)   │
+                                    │  Erasure Decoder   │
+                                    │   (up to 2t = 32)  │
                                     └─────────┬──────────┘
                                               │
                                      Decoded message
