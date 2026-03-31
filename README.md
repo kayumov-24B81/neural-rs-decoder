@@ -1,6 +1,6 @@
 # Neural Network-Assisted Decoding of Reed-Solomon RS(255,223)
 
-[![CI](https://github.com/YOUR_USERNAME/neural-rs-decoder/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/neural-rs-decoder/actions/workflows/ci.yml)
+[![CI](https://github.com/kayumov-24B81/neural-rs-decoder/actions/workflows/ci.yml/badge.svg)](https://github.com/kayumov-24B81/neural-rs-decoder/actions/workflows/ci.yml)
 
 A neural network predicts error positions in RS(255,223) codewords and passes them
 as erasures to a classical decoder, extending correction capability from 16 to up to 32
