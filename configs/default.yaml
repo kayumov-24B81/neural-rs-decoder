@@ -1,0 +1,44 @@
+# Default configuration for neural RS(255,223) decoder experiments
+
+# RS code parameters
+code:
+  n: 255
+  k: 223
+  t: 16
+
+# Model architecture
+model:
+  hidden_layers: 4
+  hidden_size: 512
+  dropout: 0.1
+  batch_norm: true
+  activation: relu
+
+# Training
+training:
+  epochs: 500
+  batch_size: 256
+  learning_rate: 1e-3
+  optimizer: adam
+  loss: focal
+  focal_alpha: 0.2
+  focal_gamma: 1.5
+  threshold: 0.3
+
+# Channel
+channel:
+  type: qsc
+  symbol_error_prob: 0.1
+  symbol_erase_prob: 0.1
+
+# Data generation
+data:
+  train_size: 100000
+  val_size: 10000
+  test_size: 10000
+  num_errors_min: 17  # t+1
+  num_errors_max: 32  # 2t
+
+# Reproducibility
+seed: 42
+deterministic: true
