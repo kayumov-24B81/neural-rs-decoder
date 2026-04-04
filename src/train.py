@@ -57,7 +57,7 @@ def train_model(
 
     for epoch in range(epochs):
         train_loss = train_epoch(model, train_loader, criterion, optimizer, device)
-        val_loss = evaluate_loss(model, val_loader, criterion, optimizer, device)
+        val_loss = evaluate_loss(model, val_loader, criterion, device)
         history["train_loss"].append(train_loss)
         history["val_loss"].append(val_loss)
 
