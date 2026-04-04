@@ -1,7 +1,9 @@
 import random
+from pathlib import Path
 
 import numpy as np
 import torch
+import yaml
 from reedsolo import rs_calc_syndromes
 
 
@@ -58,3 +60,13 @@ def set_seed(seed: int):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     torch.use_deterministic_algorithms(True)
+
+
+def load_config(path):
+    """Load YAML configuration file."""
+
+    p = Path(path)
+    if not p.exists():
+        p = Path(__file__).parent.parent / path
+    with open(p) as f:
+        return yaml.safe_load(f)
