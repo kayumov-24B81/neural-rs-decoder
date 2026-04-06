@@ -28,8 +28,8 @@ training:
 # Channel
 channel:
   type: qsc
-  symbol_error_prob: 0.1
-  symbol_erase_prob: 0.1
+  symbol_error_prob: 0.05
+  symbol_erase_prob: 0.05
 
 # Data generation
 data:
