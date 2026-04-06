@@ -16,7 +16,7 @@ model:
 
 # Training
 training:
-  epochs: 500
+  epochs: 250
   batch_size: 256
   learning_rate: 0.001
   optimizer: adam
