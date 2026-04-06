@@ -24,7 +24,7 @@ def compare_decoders(decoders: dict, channel_fn, num_samples=1000):
     for _ in range(num_samples):
         msg = os.urandom(K)
         codeword = encode(msg)
-        noisy, erase_pos = channel_fn(codeword)
+        noisy, erase_pos, _ = channel_fn(codeword)
 
         for key in decoders:
             decoded = decoders[key].decode(noisy=noisy, original=codeword, erase_pos=erase_pos)
