@@ -30,7 +30,7 @@ def evaluate_loss(model, loader, criterion, device):
         for inputs, targets in loader:
             inputs, targets = inputs.to(device), targets.to(device)
             loss = criterion(model(inputs), targets)
-            total_loss += loss
+            total_loss += loss.item()
 
     return total_loss / len(loader)
 
