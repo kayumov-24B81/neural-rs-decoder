@@ -24,7 +24,7 @@ class RSPositionDataset(Dataset):
         self._generate_data()
 
     def _generate_data(self):
-        """Generate syntheric RS transmission data using QSC erasure/error channel"""
+        """Generate syntheric RS transmission data using given channel"""
         inputs = []
         positions = []
 
