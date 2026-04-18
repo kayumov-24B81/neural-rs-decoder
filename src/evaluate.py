@@ -66,7 +66,7 @@ def benchmark_time(decoders, channel_fn, num_samples=500, warmup=50):
     for _ in range(num_samples + warmup):
         msg = os.urandom(K)
         codeword = encode(msg)
-        noisy, erase_pos = channel_fn(codeword)
+        noisy, erase_pos, _ = channel_fn(codeword)
         test_data.append((noisy, erase_pos, codeword))
 
     results = {}
@@ -85,3 +85,5 @@ def benchmark_time(decoders, channel_fn, num_samples=500, warmup=50):
             "total_sec": round(elapsed, 4),
             "per_frame_ms": round(elapsed / num_samples * 1000, 4),
         }
+
+    return results
