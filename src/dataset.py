@@ -4,16 +4,14 @@ import numpy as np
 from reedsolo import RSCodec, rs_calc_syndromes
 from torch.utils.data import Dataset
 
-from .channel import qsc_erasure_channel
 from .utils import bytes_to_bits, get_zero_mask
 
 
 class RSPositionDataset(Dataset):
-    def __init__(self, size: int, p_err: float, p_erase: float, nsym: int = 32, msg_len: int = 223):
+    def __init__(self, size: int, channel_fn, nsym: int = 32, msg_len: int = 223):
         """Initializes the dataset and generates samples"""
         self.size: int = size
-        self.p_err: float = p_err
-        self.p_erase: float = p_erase
+        self.channel_fn = channel_fn
         self.nsym: int = nsym
         self.msg_len: int = msg_len
         self.n: int = msg_len + nsym
@@ -33,7 +31,7 @@ class RSPositionDataset(Dataset):
         for _ in range(self.size):
             msg: bytes = os.urandom(self.msg_len)
             codeword: bytes = self.rsc.encode(msg)
-            noisy, _, _ = qsc_erasure_channel(codeword, self.p_err, self.p_erase)
+            noisy, _, _ = self.channel_fn(codeword)
 
             syndrome = rs_calc_syndromes(noisy, self.nsym)[1:]
             syndrome_bits = bytes_to_bits(bytes(syndrome))
