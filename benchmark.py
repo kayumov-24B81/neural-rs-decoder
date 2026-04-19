@@ -1,4 +1,12 @@
 import argparse
+from pathlib import Path
+
+import torch
+
+from src.channel import erasure_channel, make_ge_channel
+from src.codec import NSYM, ClassicDecoder, HybridDecoder, OracleDecoder
+from src.model import PositionPredictor
+from src.utils import load_model
 
 # ARGUMENT PARSING
 
@@ -40,3 +48,64 @@ def apply_overrides(config, args):
     if args.verbose is not None:
         config["output"]["verbose"] = args.verbose
     return config
+
+
+# SETUP
+
+
+def resolve_device(device_spec):
+    if device_spec == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    if device_spec == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("Requested device='cuda' but CUDA is not available.")
+    return device_spec
+
+
+def build_channel(cfg):
+    ch = cfg["channel"]
+    if ch["type"] == "gilbert_elliott":
+        preset = ch["preset"]
+        if preset == "custom":
+            params = ch.get("custom_params") or {}
+            return make_ge_channel("custom", **params)
+        return make_ge_channel(preset)
+    if ch["type"] == "erasure":
+        p_erase = ch["erasure"]["symbol_erase_prob"]
+        return lambda cw: erasure_channel(cw, p_erase=p_erase)
+    raise ValueError(f"Unknown channel type: {ch['type']}")
+
+
+def build_model(cfg, device):
+    m = cfg["model"]
+    path = m["path"]
+    if not Path(path).exists():
+        raise FileNotFoundError(
+            f"Model weights not found: {path}. "
+            f"Set decoders.neural=false or provide a valid --model path."
+        )
+    model = PositionPredictor(
+        input_size=m["input_size"],
+        hidden_size=m["hidden_size"],
+        dropout=m["dropout"],
+    )
+    return load_model(model, path, device=device)
+
+
+def build_decoders(cfg, device):
+    dec_cfg = cfg["configs"]
+    decoders = {}
+    if dec_cfg.get("classic", False):
+        decoders["classic"] = ClassicDecoder(nsym=NSYM)
+    if dec_cfg.get("oracle", False):
+        decoders["oracle"] = OracleDecoder(nsym=NSYM)
+    if dec_cfg.get("neural", False):
+        model = build_model(cfg, device)
+        decoders["neural"] = HybridDecoder(
+            model,
+            threshold=cfg["model"]["threshold"],
+            nsym=NSYM,
+            device=device,
+        )
+    if not decoders:
+        raise ValueError("No decoders enabled in config.")
+    return decoders
