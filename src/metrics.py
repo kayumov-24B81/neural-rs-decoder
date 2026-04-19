@@ -11,6 +11,9 @@ ERASURE_BUDGET = NSYM
 
 @dataclass
 class DecodeResult:
+    """ "Result of decoding one block by one decoder, everything a metrics
+    accumulator might need, in one place."""
+
     decoded: Optional[bytes]
     original: bytes
     true_errors: set
@@ -18,6 +21,7 @@ class DecodeResult:
 
 
 def init_stats(decoder_names):
+    """Initialize a raw-counter dict for a set of decoders."""
     return {
         name: {
             # Common to all decoders
@@ -40,10 +44,12 @@ def init_stats(decoder_names):
 
 
 def _count_bit_errors(decoded, original):
+    """Hamming distance in bits between two byte sequences of equal length."""
     return sum(bin(a ^ b).count("1") for a, b in zip(decoded, original))
 
 
 def update_stats(stats, decoder_name, result):
+    """Update running counters for one decoder with one decode results."""
     s = stats[decoder_name]
     decoded = result.decoded
     original = result.original
@@ -94,6 +100,7 @@ def _safe_div(num, den):
 
 
 def finalize_stats(stats, num_samples):
+    """Convert raw counters into final metrics."""
     out = {}
     for name, s in stats.items():
         metrics = {
