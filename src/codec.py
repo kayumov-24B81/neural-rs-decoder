@@ -8,12 +8,10 @@ K = 223
 NSYM = N - K  # 32 parity symbols
 T = NSYM // 2  # 16 — error correction capability
 
-_rsc = RSCodec(NSYM)
-
 
 def encode(message):
     """Encode a 223-byte message into a 255-byte RS codeword."""
-    return bytearray(_rsc.encode(message))
+    return bytearray(RSCodec(NSYM).encode(message))
 
 
 class ClassicDecoder:
@@ -69,9 +67,10 @@ class HybridDecoder:
         positions = (probs[0] > self.threshold).cpu().numpy()
         return [i for i, v in enumerate(positions) if v]
 
-    def decode(self, noisy, features=None, erase_pos=None, **kwargs):
+    def decode(self, noisy, features=None, predicted_positions=None, **kwargs):
         """Decode using neural-predicted erasure positions, return None on failure."""
-        if features is None:
-            features = build_input(noisy, self.nsym)
-        erase_pos = self.predict_positions(features)
-        return self.decoder.decode(noisy, erase_pos=erase_pos)
+        if predicted_positions is None:
+            if features is None:
+                features = build_input(noisy, self.nsym)
+            predicted_positions = self.predict_positions(features)
+        return self.decoder.decode(noisy, erase_pos=list(predicted_positions))
