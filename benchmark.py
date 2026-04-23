@@ -1,9 +1,14 @@
 import argparse
+import csv
+import datetime
 import os
+import subprocess
+import sys
 import time
 from pathlib import Path
 
 import torch
+import yaml
 from tqdm import tqdm
 
 from src.channel import erasure_channel, make_ge_channel
@@ -200,3 +205,84 @@ def run_timing_pass(decoders, channel_fn, num_samples, warmup, nsym, verbose):
 
 
 # OUTPUT
+
+
+def _git_info():
+    try:
+        commit = (
+            subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL)
+            .decode()
+            .strip()
+        )
+        dirty = bool(
+            subprocess.check_output(["git", "status", "--porcelain"], stderr=subprocess.DEVNULL)
+            .decode()
+            .strip()
+        )
+        return {"commit": commit, "dirty": dirty}
+    except Exception:
+        return {"commit": None, "dirty": None}
+
+
+def _env_info(device):
+    info = {
+        "python": sys.version.split()[0],
+        "torch": torch.__version__,
+        "device": device,
+    }
+    if device == "cuda":
+        info["cuda"] = torch.version.cuda
+        info["gpu_name"] = torch.cuda.get_device_name(0)
+    return info
+
+
+def _make_run_id(cfg):
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    tag = cfg["benchmark"].get("tag")
+    if tag is None:
+        preset = cfg["channel"].get("preset", cfg["channel"]["type"])
+        model_name = (
+            Path(cfg["model"]["path"]).stem if cfg["decoders"].get("neural") else "no model"
+        )
+        tag = f"{preset}_{model_name}"
+    return f"{timestamp}_{tag}"
+
+
+def save_results(metrics, timing, cfg, device, out_dir):
+    run_id = _make_run_id(cfg)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = out_dir / f"{run_id}.csv"
+    yaml_path = out_dir / f"{run_id}.yaml"
+
+    columns = [
+        "decoder",
+        "fer",
+        "ber",
+        "dfr",
+        "precision",
+        "recall",
+        "mask_covers_all",
+        "num_erasures_mean",
+        "num_erasures_max",
+        "overflow_rate",
+        "per_frame_ms",
+    ]
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=columns)
+        writer.writeheader()
+        for name, m in metrics.items():
+            row = {"decoder": name, **m}
+            row["per_frame_ms"] = timing[name]["per_frame_ms"]
+            writer.writerow(row)
+
+    context = {
+        "run_id": run_id,
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "git": _git_info(),
+        "environment": _env_info(device),
+    }
+    with open(yaml_path, "w") as f:
+        yaml.safe_dump(context, f, sort_keys=False, default_flow_style=False)
+
+    return csv_path, yaml_path
