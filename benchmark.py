@@ -242,7 +242,7 @@ def _make_run_id(cfg):
     if tag is None:
         preset = cfg["channel"].get("preset", cfg["channel"]["type"])
         model_name = (
-            Path(cfg["model"]["path"]).stem if cfg["decoders"].get("neural") else "no model"
+            Path(cfg["model"]["path"]).stem if cfg["decoders"].get("neural") else "no-model"
         )
         tag = f"{preset}_{model_name}"
     return f"{timestamp}_{tag}"
