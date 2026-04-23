@@ -1,12 +1,16 @@
 import argparse
+import os
+import time
 from pathlib import Path
 
 import torch
+from tqdm import tqdm
 
 from src.channel import erasure_channel, make_ge_channel
-from src.codec import NSYM, ClassicDecoder, HybridDecoder, OracleDecoder
+from src.codec import NSYM, ClassicDecoder, HybridDecoder, K, N, OracleDecoder, encode
+from src.metrics import DecodeResult, finalize_stats, init_stats, update_stats
 from src.model import PositionPredictor
-from src.utils import load_model
+from src.utils import build_input, load_model
 
 # ARGUMENT PARSING
 
@@ -109,3 +113,90 @@ def build_decoders(cfg, device):
     if not decoders:
         raise ValueError("No decoders enabled in config.")
     return decoders
+
+
+# PASSES
+
+
+def run_metrics_pass(decoders, channel_fn, num_samples, nsym, verbose):
+    stats = init_stats(decoders.keys())
+    iterator = range(num_samples)
+    if verbose:
+        iterator = tqdm(iterator, desc="metrics", unit="block")
+
+    for _ in iterator:
+        msg = bytes(os.urandom(K))
+        codeword = encode(msg)
+        noisy, _, _ = channel_fn(codeword)
+        true_errors = {i for i in range(N) if noisy[i] != codeword[i]}
+        features = build_input(noisy, nsym) if decoders else None
+
+        for name, decoder in decoders.items():
+            if name == "classic":
+                decoded = decoder.decode(noisy)
+                predicted = None
+            elif name == "oracle":
+                decoded = decoder.decode(noisy, original=codeword)
+                predicted = None
+            elif name == "neural":
+                predicted_list = decoder.predict_positions(features)
+                predicted = set(predicted_list)
+                decoded = decoder.decode(noisy, predicted_positions=predicted_list)
+            else:
+                raise ValueError(f"Unknown decoder: {name}")
+
+            result = DecodeResult(
+                decoded=decoded,
+                original=bytes(msg),
+                true_errors=true_errors,
+                predicted_positions=predicted,
+            )
+            update_stats(stats, name, result)
+
+    return finalize_stats(stats, num_samples)
+
+
+def run_timing_pass(decoders, channel_fn, num_samples, warmup, nsym, verbose):
+    test_data = []
+    for _ in range(num_samples + warmup):
+        msg = bytes(os.urandom(K))
+        codeword = encode(msg)
+        noisy, _, _ = channel_fn(codeword)
+        features = build_input(noisy, nsym) if "neural" in decoders else None
+        test_data.append((noisy, codeword, msg, features))
+
+    results = {}
+    for name, decoder in decoders.items():
+        for noisy, codeword, _, features in test_data[:warmup]:
+            if name == "classic":
+                decoder.decode(noisy)
+            elif name == "oracle":
+                decoder.decode(noisy, original=codeword)
+            else:
+                decoder.decode(noisy, features=features)
+
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        start = time.perf_counter()
+        for noisy, codeword, _, features in test_data[warmup:]:
+            if name == "classic":
+                decoder.decode(noisy)
+            elif name == "oracle":
+                decoder.decode(noisy, original=codeword)
+            else:
+                decoder.decode(noisy, features=features)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        elapsed = time.perf_counter() - start
+
+        results[name] = {
+            "total_sec": elapsed,
+            "per_frame_ms": elapsed / num_samples * 1000,
+        }
+        if verbose:
+            print(f"  {name}: {results[name]['per_frame_ms']:.3f} ms/frame")
+
+    return results
+
+
+# OUTPUT
