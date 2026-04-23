@@ -15,7 +15,7 @@ from src.channel import erasure_channel, make_ge_channel
 from src.codec import NSYM, ClassicDecoder, HybridDecoder, K, N, OracleDecoder, encode
 from src.metrics import DecodeResult, finalize_stats, init_stats, update_stats
 from src.model import PositionPredictor
-from src.utils import build_input, load_model
+from src.utils import build_input, load_config, load_model, set_seed
 
 # ARGUMENT PARSING
 
@@ -286,3 +286,62 @@ def save_results(metrics, timing, cfg, device, out_dir):
         yaml.safe_dump(context, f, sort_keys=False, default_flow_style=False)
 
     return csv_path, yaml_path
+
+
+# MAIN
+
+
+def main():
+    args = parse_args()
+    cfg = load_config(args.config)
+    cfg = apply_overrides(cfg, args)
+
+    seed = cfg.get("seed", 42)
+    set_seed(seed)
+
+    device = resolve_device(cfg.get("device", "auto"))
+    verbose = cfg["output"].get("verbose", True)
+
+    if verbose:
+        print(f"Device: {device}")
+        print(f"Channel: {cfg['channel']['type']}/{cfg['channel'].get('preset', '-')}")
+        print(f"Seed: {seed}")
+
+    channel_fn = build_channel(cfg)
+    decoders = build_decoders(cfg, device)
+
+    if verbose:
+        print(f"Decoders: {list(decoders.keys())}")
+        print("Pass 1/2: metrics")
+    metrics = run_metrics_pass(
+        decoders,
+        channel_fn,
+        num_samples=cfg["benchmark"]["num_samples"],
+        nsym=cfg["code"]["nsym"],
+        verbose=verbose,
+    )
+
+    if verbose:
+        print("Pass 2/2: timing")
+    timing = run_timing_pass(
+        decoders,
+        channel_fn,
+        num_samples=cfg["timing"]["num_samples"],
+        warmup=cfg["timing"]["warmup"],
+        nsym=cfg["code"]["nsym"],
+        verbose=verbose,
+    )
+
+    csv_path, yaml_path = save_results(
+        metrics,
+        timing,
+        cfg,
+        device,
+        cfg["output"]["dir"],
+    )
+    print(f"Results: {csv_path}")
+    print(f"Context: {yaml_path}")
+
+
+if __name__ == "__main__":
+    main()
