@@ -1,4 +1,3 @@
-import os
 import time
 
 import numpy as np
@@ -22,7 +21,7 @@ def compare_decoders(decoders: dict, channel_fn, num_samples=1000):
     metrics = {key: {"fer": 0, "ber": 0} for key in decoders}
 
     for _ in range(num_samples):
-        msg = os.urandom(K)
+        msg = np.random.bytes(K)
         codeword = encode(msg)
         noisy, erase_pos, _ = channel_fn(codeword)
 
@@ -64,7 +63,7 @@ def benchmark_time(decoders, channel_fn, num_samples=500, warmup=50):
     """Benchmark decoding time per frame for each decoder."""
     test_data = []
     for _ in range(num_samples + warmup):
-        msg = os.urandom(K)
+        msg = np.random.bytes(K)
         codeword = encode(msg)
         noisy, erase_pos, _ = channel_fn(codeword)
         test_data.append((noisy, erase_pos, codeword))

@@ -1,5 +1,3 @@
-import os
-
 import numpy as np
 from reedsolo import RSCodec, rs_calc_syndromes
 from torch.utils.data import Dataset
@@ -29,7 +27,7 @@ class RSPositionDataset(Dataset):
         positions = []
 
         for _ in range(self.size):
-            msg: bytes = os.urandom(self.msg_len)
+            msg: bytes = np.random.bytes(self.msg_len)
             codeword: bytes = self.rsc.encode(msg)
             noisy, _, _ = self.channel_fn(codeword)
 

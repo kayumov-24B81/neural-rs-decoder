@@ -1,12 +1,12 @@
 import argparse
 import csv
 import datetime
-import os
 import subprocess
 import sys
 import time
 from pathlib import Path
 
+import numpy as np
 import torch
 import yaml
 from tqdm import tqdm
@@ -130,7 +130,7 @@ def run_metrics_pass(decoders, channel_fn, num_samples, nsym, verbose):
         iterator = tqdm(iterator, desc="metrics", unit="block")
 
     for _ in iterator:
-        msg = bytes(os.urandom(K))
+        msg = np.random.bytes(K)
         codeword = encode(msg)
         noisy, _, _ = channel_fn(codeword)
         true_errors = {i for i in range(N) if noisy[i] != codeword[i]}
@@ -164,7 +164,7 @@ def run_metrics_pass(decoders, channel_fn, num_samples, nsym, verbose):
 def run_timing_pass(decoders, channel_fn, num_samples, warmup, nsym, verbose):
     test_data = []
     for _ in range(num_samples + warmup):
-        msg = bytes(os.urandom(K))
+        msg = np.random.bytes(K)
         codeword = encode(msg)
         noisy, _, _ = channel_fn(codeword)
         features = build_input(noisy, nsym) if "neural" in decoders else None
