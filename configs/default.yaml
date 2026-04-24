@@ -1,44 +1,44 @@
-# Default configuration for neural RS(255,223) decoder experiments
 
-# RS code parameters
+
+seed: 42
+device: auto
+
 code:
   n: 255
   k: 223
-  t: 16
+  nsym: 32
 
-# Model architecture
+channel:
+  type: gilbert_elliott
+  preset: moderate
+  custom_params:
+    p: null
+    r: null
+    h: null
+    k: null
+  erasure:
+    symbol_erase_prob: 0.05
+
 model:
-  hidden_layers: 4
+  path: weights/model.pth
+  input_size: 511
   hidden_size: 512
   dropout: 0.1
-  batch_norm: true
-  activation: relu
-
-# Training
-training:
-  epochs: 250
-  batch_size: 256
-  learning_rate: 0.001
-  optimizer: adam
-  loss: focal
-  focal_alpha: 0.2
-  focal_gamma: 1.5
   threshold: 0.3
 
-# Channel
-channel:
-  type: qsc
-  symbol_error_prob: 0.05
-  symbol_erase_prob: 0.05
+decoders:
+  classic: true
+  oracle: true
+  neural: true
 
-# Data generation
-data:
-  train_size: 100000
-  val_size: 10000
-  test_size: 10000
-  num_errors_min: 17  # t+1
-  num_errors_max: 32  # 2t
+benchmark:
+  num_samples: 1000
+  tag: null
 
-# Reproducibility
-seed: 42
-deterministic: true
+timing:
+  num_samples: 500
+  warmup: 50
+
+output:
+  dir: results/runs/
+  verbose: true
