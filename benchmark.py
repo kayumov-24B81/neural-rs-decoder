@@ -38,6 +38,19 @@ def parse_args():
     p.add_argument("--output", default=None, help="Override output.dir.")
     p.add_argument("--verbose", dest="verbose", action="store_true", default=None)
     p.add_argument("--no-verbose", dest="verbose", action="store_false")
+    p.add_argument(
+        "--decoders",
+        default=None,
+        help="Comma-separated list of decoders to enable (classic,oracle,neural). "
+        "Overrides decoders.* from config.",
+    )
+    p.add_argument("--seed", type=int, default=None, help="Override seed.")
+    p.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help="Override model.threshold (neural decoder mask threshold).",
+    )
     return p.parse_args()
 
 
@@ -56,6 +69,18 @@ def apply_overrides(config, args):
         config["output"]["dir"] = args.output
     if args.verbose is not None:
         config["output"]["verbose"] = args.verbose
+    if args.seed is not None:
+        config["seed"] = args.seed
+    if args.threshold is not None:
+        config["model"]["threshold"] = args.threshold
+    if args.decoders is not None:
+        valid = {"classic", "oracle", "neural"}
+        requested = {d.strip() for d in args.decoders.split(",") if d.strip()}
+        unknown = requested - valid
+        if unknown:
+            raise ValueError(f"Unknown decoders: {sorted(unknown)}. Valid: {sorted(valid)}.")
+        for d in valid:
+            config["decoders"][d] = d in requested
     return config
 
 
