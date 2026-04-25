@@ -1,9 +1,9 @@
 import argparse
 import csv
-import datetime
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -32,7 +32,7 @@ def parse_args():
         "--device",
         default=None,
         choices=["cpu", "cuda", "auto"],
-        help="Override device. 'auto' uses CUDA if avialable.",
+        help="Override device. 'auto' uses CUDA if available.",
     )
     p.add_argument("--tag", default=None, help="Override benchmark.tag (used in output filename).")
     p.add_argument("--output", default=None, help="Override output.dir.")
@@ -101,7 +101,7 @@ def build_model(cfg, device):
 
 
 def build_decoders(cfg, device):
-    dec_cfg = cfg["configs"]
+    dec_cfg = cfg["decoders"]
     decoders = {}
     if dec_cfg.get("classic", False):
         decoders["classic"] = ClassicDecoder(nsym=NSYM)
@@ -134,7 +134,7 @@ def run_metrics_pass(decoders, channel_fn, num_samples, nsym, verbose):
         codeword = encode(msg)
         noisy, _, _ = channel_fn(codeword)
         true_errors = {i for i in range(N) if noisy[i] != codeword[i]}
-        features = build_input(noisy, nsym) if decoders else None
+        features = build_input(noisy, nsym) if "neural" in decoders else None
 
         for name, decoder in decoders.items():
             if name == "classic":
@@ -227,11 +227,11 @@ def _git_info():
 def _env_info(device):
     info = {
         "python": sys.version.split()[0],
-        "torch": torch.__version__,
+        "torch": str(torch.__version__),
         "device": device,
     }
     if device == "cuda":
-        info["cuda"] = torch.version.cuda
+        info["cuda"] = str(torch.version.cuda)
         info["gpu_name"] = torch.cuda.get_device_name(0)
     return info
 
@@ -281,6 +281,7 @@ def save_results(metrics, timing, cfg, device, out_dir):
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "git": _git_info(),
         "environment": _env_info(device),
+        "config": cfg,
     }
     with open(yaml_path, "w") as f:
         yaml.safe_dump(context, f, sort_keys=False, default_flow_style=False)
