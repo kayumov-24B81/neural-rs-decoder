@@ -18,3 +18,30 @@ include = ["src*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+addopts = "--cov=src --cov-report=term-missing"
+
+[project]
+name = "neural-rs-decoder"
+version = "0.1.0"
+description = "Neural network-assisted decoding of Reed-Solomon RS(255,223) codes"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "torch",
+    "reedsolo",
+    "pyyaml",
+    "tqdm",
+    "pandas",
+    "matplotlib",
+    "jupyter",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "black",
+    "isort",
+    "flake8",
+    "pre-commit",
+]
