@@ -1,0 +1,64 @@
+run_id: 20260515_102750_moderate_seed42
+timestamp: '2026-05-15T10:30:23'
+git:
+  commit: 1d8ce4601f9a4b0fed5665160a867e8e3b05c6c3
+  dirty: true
+environment:
+  python: 3.12.12
+  torch: 2.10.0+cu128
+  device: cuda
+  cuda: '12.8'
+  gpu_name: Tesla T4
+config:
+  seed: 42
+  device: auto
+  code:
+    n: 255
+    k: 223
+    nsym: 32
+  channel:
+    type: gilbert_elliott
+    preset: moderate
+    custom_params:
+      p: null
+      r: null
+      h: null
+      k: null
+    erasure:
+      symbol_erase_prob: 0.05
+  model:
+    path: weights/model.pth
+    input_size: 511
+    hidden_size: 512
+    dropout: 0.1
+    threshold: 0.3
+  training:
+    train_size: 10000
+    val_size: 2000
+    epochs: 500
+    batch_size: 256
+    lr: 0.001
+    log_every: 50
+    checkpoint_every: 50
+    loss:
+      type: focal
+      focal_alpha: 0.2
+      focal_gamma: 1.5
+  decoders:
+    classic: true
+    oracle: true
+    neural: true
+  benchmark:
+    num_samples: 1000
+    tag: null
+  timing:
+    num_samples: 500
+    warmup: 50
+  output:
+    dir: results/runs/
+    verbose: true
+results:
+  final_train_loss: 0.008182072977069766
+  final_val_loss: 0.0451863631606102
+  min_val_loss: 0.02759451512247324
+  min_val_loss_epoch: 3
