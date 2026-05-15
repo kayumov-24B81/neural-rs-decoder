@@ -1,3 +1,5 @@
+import copy
+
 import torch
 from torch.utils.data import DataLoader
 
@@ -46,14 +48,20 @@ def train_model(
     device="cpu",
     verbose=True,
     log_every=50,
+    patience=None,
 ):
-    """Train model."""
+    """Train model. If patience is set, stop when val_loss does not improve for 'patience'
+    epochs and restore the best weights."""
     model.to(device)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     history = {"train_loss": [], "val_loss": []}
+    best_val_loss = float("inf")
+    best_epoch = 0
+    best_state = None
+    epochs_no_improve = 0
 
     for epoch in range(epochs):
         train_loss = train_epoch(model, train_loader, criterion, optimizer, device)
@@ -61,7 +69,29 @@ def train_model(
         history["train_loss"].append(train_loss)
         history["val_loss"].append(val_loss)
 
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_epoch = epoch + 1
+            best_state = copy.deepcopy(model.state_dict())
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+
         if verbose and (epoch + 1) % log_every == 0:
             print(f"Epoch {epoch+1:3d}/{epochs}, Train: {train_loss:.4f}, Val: {val_loss:.4f}")
+
+        if patience is not None and epochs_no_improve >= patience:
+            if verbose:
+                print(
+                    f"Early stopping at epoch {epoch+1} (best: {best_epoch}, \
+                    val_loss={best_val_loss:.4f})"
+                )
+            break
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+
+    history["best_epoch"] = best_epoch
+    history["best_val_loss"] = best_val_loss
 
     return history

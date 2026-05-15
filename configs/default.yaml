@@ -34,6 +34,7 @@ training:
   lr: 0.001
   log_every: 50 # for later
   checkpoint_every: 50 # for later
+  patience: 30 # null to disable
   loss:
     type: focal
     focal_alpha: 0.2
