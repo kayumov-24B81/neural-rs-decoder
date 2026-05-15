@@ -26,6 +26,19 @@ model:
   dropout: 0.1
   threshold: 0.3
 
+training:
+  train_size: 10000
+  val_size: 2000
+  epochs: 500
+  batch_size: 256
+  lr: 0.001
+  log_every: 50 # for later
+  checkpoint_every: 50 # for later
+  loss:
+    type: focal
+    focal_alpha: 0.2
+    focal_gamma: 1.5
+
 decoders:
   classic: true
   oracle: true
