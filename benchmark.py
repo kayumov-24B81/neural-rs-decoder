@@ -228,7 +228,28 @@ def run_timing_pass(decoders, channel_fn, num_samples, warmup, nsym, verbose):
     return results
 
 
-# OUTPUTF
+def run_encoding_pass(num_samples, warmup, verbose):
+    test_msgs = [np.random.bytes(K) for _ in range(num_samples + warmup)]
+
+    for msg in test_msgs[:warmup]:
+        encode(msg)
+
+    start = time.perf_counter()
+    for msg in test_msgs[warmup:]:
+        encode(msg)
+    elapsed = time.perf_counter() - start
+
+    result = {
+        "total_sec": elapsed,
+        "per_frame_ms": elapsed / num_samples * 1000,
+    }
+    if verbose:
+        print(f"  encoding: {result['per_frame_ms']:.3f} ms/frame")
+
+    return result
+
+
+# OUTPUT
 
 
 def _make_run_id(cfg):
@@ -243,7 +264,7 @@ def _make_run_id(cfg):
     return f"{timestamp}_{tag}"
 
 
-def save_results(metrics, timing, cfg, device, out_dir):
+def save_results(metrics, timing, encoding, cfg, device, out_dir):
     run_id = _make_run_id(cfg)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -262,6 +283,8 @@ def save_results(metrics, timing, cfg, device, out_dir):
         "num_erasures_max",
         "overflow_rate",
         "per_frame_ms",
+        "encoding_time_ms",
+        "decode_to_encode_ratio",
     ]
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=columns)
@@ -269,6 +292,8 @@ def save_results(metrics, timing, cfg, device, out_dir):
         for name, m in metrics.items():
             row = {"decoder": name, **m}
             row["per_frame_ms"] = timing[name]["per_frame_ms"]
+            row["encoding_time_ms"] = encoding["per_frame_ms"]
+            row["decode_to_encode_ratio"] = timing[name]["per_frame_ms"] / encoding["per_frame_ms"]
             writer.writerow(row)
 
     context = {
@@ -308,7 +333,7 @@ def main():
 
     if verbose:
         print(f"Decoders: {list(decoders.keys())}")
-        print("Pass 1/2: metrics")
+        print("Pass 1/3: metrics")
     metrics = run_metrics_pass(
         decoders,
         channel_fn,
@@ -318,7 +343,7 @@ def main():
     )
 
     if verbose:
-        print("Pass 2/2: timing")
+        print("Pass 2/3 decoding timing")
     timing = run_timing_pass(
         decoders,
         channel_fn,
@@ -328,9 +353,18 @@ def main():
         verbose=verbose,
     )
 
+    if verbose:
+        print("Pass 3/3: encoding timing")
+    encoding = run_encoding_pass(
+        num_samples=cfg["timing"]["num_samples"],
+        warmup=cfg["timing"]["warmup"],
+        verbose=verbose,
+    )
+
     csv_path, yaml_path = save_results(
         metrics,
         timing,
+        encoding,
         cfg,
         device,
         cfg["output"]["dir"],
