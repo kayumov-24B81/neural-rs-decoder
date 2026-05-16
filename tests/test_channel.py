@@ -1,8 +1,18 @@
+import math
 import random
 
+import numpy as np
 import pytest
 
-from src.channel import GE_PRESETS, erasure_channel, gilbert_elliott_channel, make_ge_channel
+from src.channel import (
+    AWGN_PRESETS,
+    GE_PRESETS,
+    awgn_channel,
+    erasure_channel,
+    gilbert_elliott_channel,
+    make_awgn_channel,
+    make_ge_channel,
+)
 from src.codec import K, N, encode
 
 
@@ -11,6 +21,9 @@ def codeword():
     random.seed(0)
     msg = bytes(random.randint(0, 255) for _ in range(K))
     return encode(msg)
+
+
+# GE TESTS
 
 
 def test_ge_zero_channel_no_errors(codeword):
@@ -118,6 +131,9 @@ def test_make_ge_channel_unknown_preset_raises():
         make_ge_channel("unknown_preset")
 
 
+# ERASURE TEST
+
+
 def test_erasure_channel_rate(codeword):
     random.seed(42)
     p_erase = 0.1
@@ -143,3 +159,94 @@ def test_erasure_returns_empty_errors(codeword):
     random.seed(42)
     _, _, errors = erasure_channel(codeword, p_erase=0.2)
     assert errors == []
+
+
+# AWGN TEST
+
+
+def test_awgn_high_snr_no_errors(codeword):
+    np.random.seed(42)
+    noisy, erasures, errors = awgn_channel(codeword, ebn0_db=20.0)
+
+    assert noisy == bytes(codeword)
+    assert erasures == []
+    assert errors == []
+
+
+def test_awgn_low_snr_many_errors(codeword):
+    np.random.seed(42)
+    _, _, errors = awgn_channel(codeword, ebn0_db=-30.0)
+
+    assert len(errors) > N * 0.9
+
+
+def test_awgn_returns_empty_erasures(codeword):
+    np.random.seed(42)
+    _, erasures, _ = awgn_channel(codeword, ebn0_db=-3.0)
+
+    assert erasures == []
+
+
+def test_awgn_errors_match_diff(codeword):
+    np.random.seed(42)
+    noisy, _, errors = awgn_channel(codeword, ebn0_db=-3.0)
+    expected = {i for i in range(N) if noisy[i] != codeword[i]}
+
+    assert set(errors) == expected
+
+
+def test_awgn_ber_matches_theory():
+    """Observed bit error rate should match Q(sqrt(2*Es/N0)) for BPSK."""
+    np.random.seed(42)
+    ebn0_db = -4.0
+    R = K / N
+    ebn0_linear = 10 ** (ebn0_db / 10)
+    esn0_linear = ebn0_linear * R * 8
+    expected_ber = 0.5 * math.erfc(math.sqrt(esn0_linear))
+
+    n_samples = 2000
+    msg = bytes(K)
+    cw = encode(msg)
+
+    flipped_bits = 0
+    total_bits = 0
+    for _ in range(n_samples):
+        noisy, _, _ = awgn_channel(cw, ebn0_db=ebn0_db)
+        for orig_b, noisy_b in zip(cw, noisy):
+            flipped_bits += bin(orig_b ^ noisy_b).count("1")
+            total_bits += 8
+
+    observed_ber = flipped_bits / total_bits
+
+    assert abs(observed_ber - expected_ber) < 0.001
+
+
+def test_awgn_presets_exist():
+    required_keys = {"ebn0_db"}
+    for name in ("light", "moderate", "heavy"):
+        assert name in AWGN_PRESETS
+        assert set(AWGN_PRESETS[name]) == required_keys
+
+
+def test_make_awgn_channel_by_preset(codeword):
+    for name in ("light", "moderate", "heavy"):
+        fn = make_awgn_channel(name)
+        np.random.seed(42)
+        noisy, erasures, errors = fn(codeword)
+
+        assert len(noisy) == N
+        assert erasures == []
+        assert isinstance(errors, list)
+
+
+def test_make_awgn_channel_custom(codeword):
+    fn = make_awgn_channel("custom", ebn0_db=-3.5)
+    np.random.seed(42)
+    noisy, _, _ = fn(codeword)
+
+    assert len(noisy) == N
+
+
+def test_make_awgn_channel_unknown_preset_raises():
+    with pytest.raises(ValueError, match="Unknown preset"):
+        make_awgn_channel("unknown preset")
