@@ -1,4 +1,6 @@
 import copy
+import json
+from pathlib import Path
 
 import torch
 from torch.utils.data import DataLoader
@@ -49,6 +51,7 @@ def train_model(
     verbose=True,
     log_every=50,
     patience=None,
+    checkpoint_dir=None,
 ):
     """Train model. If patience is set, stop when val_loss does not improve for 'patience'
     epochs and restore the best weights."""
@@ -56,6 +59,10 @@ def train_model(
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    if checkpoint_dir is not None:
+        checkpoint_dir = Path(checkpoint_dir)
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     history = {"train_loss": [], "val_loss": []}
     best_val_loss = float("inf")
@@ -74,6 +81,8 @@ def train_model(
             best_epoch = epoch + 1
             best_state = copy.deepcopy(model.state_dict())
             epochs_no_improve = 0
+            if checkpoint_dir is not None:
+                torch.save(best_state, checkpoint_dir / "best.pth")
         else:
             epochs_no_improve += 1
 
@@ -93,5 +102,10 @@ def train_model(
 
     history["best_epoch"] = best_epoch
     history["best_val_loss"] = best_val_loss
+
+    if checkpoint_dir is not None:
+        torch.save(model.state_dict(), checkpoint_dir / "last.pth")
+        with open(checkpoint_dir / "history.json", "w") as f:
+            json.dump(history, f, indent=2)
 
     return history
