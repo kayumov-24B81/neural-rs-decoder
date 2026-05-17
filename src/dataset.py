@@ -37,7 +37,7 @@ class RSPositionDataset(Dataset):
         positions_vector = np.array(
             [1.0 if e != 0 else 0.0 for e in error_pattern], dtype=np.float32
         )
-        return input_vector, positions_vector, noisy, codeword
+        return input_vector, positions_vector, noisy, msg
 
     def __len__(self):
         return self.size
