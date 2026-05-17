@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from src.evaluate import evaluate_fer
+from src.evaluate import evaluate_fer, evaluate_loss
 
 
 def train_epoch(model, loader, criterion, optimizer, device):
@@ -24,20 +24,6 @@ def train_epoch(model, loader, criterion, optimizer, device):
         optimizer.step()
 
         total_loss += loss.item()
-
-    return total_loss / len(loader)
-
-
-def evaluate_loss(model, loader, criterion, device):
-    """Compute average loss without gradient updates."""
-    model.eval()
-    total_loss = 0
-
-    with torch.no_grad():
-        for inputs, targets in loader:
-            inputs, targets = inputs.to(device), targets.to(device)
-            loss = criterion(model(inputs), targets)
-            total_loss += loss.item()
 
     return total_loss / len(loader)
 

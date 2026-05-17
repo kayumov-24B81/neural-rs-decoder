@@ -6,6 +6,18 @@ from .codec import NSYM, ClassicDecoder
 K = 223  # encoded symbols
 
 
+def evaluate_loss(model, loader, criterion, device):
+    """Compute average loss without gradient updates."""
+    model.eval()
+    total_loss = 0
+    with torch.no_grad():
+        for inputs, targets in loader:
+            inputs, targets = inputs.to(device), targets.to(device)
+            loss = criterion(model(inputs), targets)
+            total_loss += loss.item()
+    return total_loss / len(loader)
+
+
 def evaluate_fer(model, val_dataset, threshold, device, batch_size=256):
     """Frame Error Rate on a fixed val_dataset using hybrid (model + RS) decoding.
 
