@@ -1,56 +1,39 @@
 import numpy as np
-from reedsolo import RSCodec, rs_calc_syndromes
+from reedsolo import RSCodec
 from torch.utils.data import Dataset
 
-from .utils import bytes_to_bits, get_zero_mask
+from src.utils import build_input
 
 
 class RSPositionDataset(Dataset):
-    def __init__(self, size: int, channel_fn, nsym: int = 32, msg_len: int = 223):
-        """Initializes the dataset and generates samples"""
+    def __init__(self, size: int, channel_fns: list, nsym: int = 32, msg_len: int = 223):
+        """Generates syncthetic RS transmission data on-the-fly.
+
+        If channel_fns contains multiple callables, each samples picks one
+        uniformly at random (mixed channel training)."""
+
         self.size: int = size
-        self.channel_fn = channel_fn
+        self.channel_fns: list = channel_fns
         self.nsym: int = nsym
         self.msg_len: int = msg_len
         self.n: int = msg_len + nsym
 
         self.rsc = RSCodec(nsym)
 
-        self.inputs: np.ndarray
-        self.positions: np.ndarray
-
-        self._generate_data()
-
-    def _generate_data(self):
-        """Generate syntheric RS transmission data using given channel"""
-        inputs = []
-        positions = []
-
-        for _ in range(self.size):
-            msg: bytes = np.random.bytes(self.msg_len)
-            codeword: bytes = self.rsc.encode(msg)
-            noisy, _, _ = self.channel_fn(codeword)
-
-            syndrome = rs_calc_syndromes(noisy, self.nsym)[1:]
-            syndrome_bits = bytes_to_bits(bytes(syndrome))
-            zero_mask = get_zero_mask(noisy)
-            input_vector = np.concatenate([syndrome_bits, zero_mask])
-
-            error_pattern = bytes(a ^ b for a, b in zip(codeword, noisy))
-            positions_vector = np.array(
-                [1.0 if e != 0 else 0.0 for e in error_pattern], dtype=np.float32
-            )
-
-            inputs.append(input_vector)
-            positions.append(positions_vector)
-
-        self.inputs = np.array(inputs, dtype=np.float32)
-        self.positions = np.array(positions, dtype=np.float32)
-
     def __len__(self):
-        """Returns the number of samples in the dataset."""
         return self.size
 
-    def __getitem__(self, idx: int):
-        """Retrieves a single dataset sample."""
-        return self.inputs[idx], self.positions[idx]
+    def __getitem__(self, idx: int = None):
+        msg: bytes = np.random.bytes(self.msg_len)
+        codeword: bytes = self.rsc.encode(msg)
+        channel_fn = self.channel_fns[np.random.randint(len(self.channel_fns))]
+        noisy, _, _ = channel_fn(codeword)
+
+        input_vector = build_input(noisy, self.nsym).astype(np.float32)
+
+        error_pattern = bytes(a ^ b for a, b in zip(codeword, noisy))
+        positions_vector = np.array(
+            [1.0 if e != 0 else 0.0 for e in error_pattern], dtype=np.float32
+        )
+
+        return input_vector, positions_vector
