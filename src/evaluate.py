@@ -1,88 +1,37 @@
-import time
-
 import numpy as np
 import torch
 
-from .codec import encode
-from .utils import bytes_to_bits
+from .codec import NSYM, ClassicDecoder
 
 K = 223  # encoded symbols
 
 
-def evaluate_decoder(decoder, channel_fn, num_samples=1000):
-    """Evaluate decoder computing FER and BER in a single pass"""
-    results = compare_decoders({"decoder": decoder}, channel_fn, num_samples)
-    return results["decoder"]
+def evaluate_fer(model, val_dataset, threshold, device, batch_size=256):
+    """Frame Error Rate on a fixed val_dataset using hybrid (model + RS) decoding.
 
+    val_dataset must be in fixed mode (provides .get_raw(idx)).
+    """
+    model.eval()
+    decoder = ClassicDecoder(nsym=NSYM)
+    failures = 0
+    n = len(val_dataset)
 
-def compare_decoders(decoders: dict, channel_fn, num_samples=1000):
-    """Compare multiple decoders on the same noisy data."""
+    all_predictions = []
+    with torch.no_grad():
+        for start in range(0, n, batch_size):
+            end = min(start + batch_size, n)
+            inputs = np.stack([val_dataset.get_raw(i)[0] for i in range(start, end)])
+            x = torch.from_numpy(inputs).to(device)
+            probs = torch.sigmoid(model(x))
+            mask = (probs > threshold).cpu().numpy()
+            all_predictions.append(mask)
+    predictions = np.concatenate(all_predictions, axis=0)
 
-    metrics = {key: {"fer": 0, "ber": 0} for key in decoders}
+    for i in range(n):
+        _, _, noisy, msg = val_dataset.get_raw(i)
+        erase_pos = [j for j in range(len(noisy)) if predictions[i, j]]
+        decoded = decoder.decode(noisy, erase_pos=erase_pos)
+        if decoded != msg:
+            failures += 1
 
-    for _ in range(num_samples):
-        msg = np.random.bytes(K)
-        codeword = encode(msg)
-        noisy, erase_pos, _ = channel_fn(codeword)
-
-        for key in decoders:
-            decoded = decoders[key].decode(noisy=noisy, original=codeword, erase_pos=erase_pos)
-
-            if decoded is None or decoded != msg:
-                metrics[key]["fer"] += 1
-
-            if decoded is not None:
-                msg_bits = bytes_to_bits(msg)
-                decoded_bits = bytes_to_bits(decoded)
-                metrics[key]["ber"] += np.sum(msg_bits != decoded_bits)
-            else:
-                metrics[key]["ber"] += K * 8
-
-    return {
-        key: {
-            "fer": metrics[key]["fer"] / num_samples,
-            "ber": metrics[key]["ber"] / (num_samples * K * 8),
-        }
-        for key in metrics
-    }
-
-
-def compute_metrics(predicted_pos, true_pos):
-    """Compute precision and recall of predicted error positions."""
-    pred = set(predicted_pos)
-    true = set(true_pos)
-
-    tp = len(pred & true)
-    precision = tp / len(pred) if pred else 0.0
-    recall = tp / len(true) if true else 0.0
-
-    return {"precision": precision, "recall": recall}
-
-
-def benchmark_time(decoders, channel_fn, num_samples=500, warmup=50):
-    """Benchmark decoding time per frame for each decoder."""
-    test_data = []
-    for _ in range(num_samples + warmup):
-        msg = np.random.bytes(K)
-        codeword = encode(msg)
-        noisy, erase_pos, _ = channel_fn(codeword)
-        test_data.append((noisy, erase_pos, codeword))
-
-    results = {}
-    for key, decoder in decoders.items():
-        for noisy, erase_pos, codeword in test_data[:warmup]:
-            decoder.decode(noisy, original=codeword, erase_pos=erase_pos)
-
-        torch.cuda.synchronize() if torch.cuda.is_available() else None
-        start = time.perf_counter()
-        for noisy, erase_pos, codeword in test_data[warmup:]:
-            decoder.decode(noisy, original=codeword, erase_pos=erase_pos)
-        torch.cuda.synchronize() if torch.cuda.is_available() else None
-        elapsed = time.perf_counter() - start
-
-        results[key] = {
-            "total_sec": round(elapsed, 4),
-            "per_frame_ms": round(elapsed / num_samples * 1000, 4),
-        }
-
-    return results
+    return failures / n
