@@ -50,8 +50,24 @@ def train_model(
         raise ValueError(f"selection_metric must be 'loss' or 'fer', got {selection_metric!r}")
 
     model.to(device)
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loaders = {name: DataLoader(ds, batch_size=batch_size) for name, ds in val_datasets.items()}
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=2,
+        pin_memory=(device == "cuda"),
+        persistent_workers=True,
+    )
+    val_loaders = {
+        name: DataLoader(
+            ds,
+            batch_size=batch_size,
+            num_workers=2,
+            pin_memory=(device == "cuda"),
+            persistent_workers=True,
+        )
+        for name, ds in val_datasets.items()
+    }
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     if checkpoint_dir is not None:
