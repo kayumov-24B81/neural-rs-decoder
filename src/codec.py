@@ -70,7 +70,7 @@ class HybridDecoder:
 
     def predict_positions(self, features: np.ndarray) -> list:
         """Predict error positions from precomputed input features."""
-        x = torch.tensor(features).unsqueeze(0).to(self.device)
+        x = torch.from_numpy(features).float().unsqueeze(0).to(self.device)
         with torch.no_grad():
             logits = self.model(x)
             probs = torch.sigmoid(logits)
