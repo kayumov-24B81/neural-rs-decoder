@@ -354,8 +354,8 @@ def test_full_flow_classic_and_neural_decoders():
 # edge case
 
 
-def test_finalize_zero_samples_does_not_crash():
-    """num_samples=0 should not crash even with empty stats."""
+def test_finalize_zero_samples_raises():
+    """num_samples=0 is invalid input and must raise, not return garbage."""
     stats = init_stats(["d"])
     with pytest.raises(ZeroDivisionError):
         finalize_stats(stats, num_samples=0)
