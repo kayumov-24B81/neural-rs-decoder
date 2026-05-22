@@ -6,7 +6,12 @@ import sys
 import torch
 
 
-def git_info():
+def git_info() -> dict:
+    """Return current git commit hash and dirty-tree flag.
+
+    Returns a dict with keys 'commit' (str) and 'dirty' (bool).
+    Both are None if the git command fails (e.g. not a repository).
+    """
     try:
         commit = (
             subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL)
@@ -23,7 +28,11 @@ def git_info():
         return {"commit": None, "dirty": None}
 
 
-def env_info(device):
+def env_info(device: str) -> dict:
+    """Return Python/PyTorch/device info for run reproducibility context.
+
+    Includes CUDA version and GPU name when device is 'cuda'.
+    """
     info = {
         "python": sys.version.split()[0],
         "torch": str(torch.__version__),

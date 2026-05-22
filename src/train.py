@@ -1,3 +1,5 @@
+"""Training loop with mixed-channel data and multi-preset FER selection."""
+
 import copy
 import json
 from pathlib import Path
@@ -6,10 +8,10 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from src.evaluate import evaluate_fer, evaluate_loss
+from .evaluate import evaluate_fer, evaluate_loss
 
 
-def train_epoch(model, loader, criterion, optimizer, device):
+def train_epoch(model: torch.nn.Module, loader, criterion, optimizer, device: str) -> float:
     """Train one epoch."""
     model.train()
     total_loss = 0
@@ -29,23 +31,40 @@ def train_epoch(model, loader, criterion, optimizer, device):
 
 
 def train_model(
-    model,
+    model: torch.nn.Module,
     train_dataset,
-    val_datasets,
+    val_datasets: dict,
     criterion,
-    epochs=500,
-    batch_size=256,
-    lr=1e-3,
-    device="cpu",
-    verbose=True,
-    log_every=50,
-    patience=None,
-    checkpoint_dir=None,
-    selection_metric="fer",  # fer or loss
-    threshold=0.3,  # only when metrics is fer
-):
-    """Train model. If patience is set, stop when val_loss does not improve for 'patience'
-    epochs and restore the best weights."""
+    epochs: int = 500,
+    batch_size: int = 256,
+    lr: float = 1e-3,
+    device: str = "cpu",
+    verbose: bool = True,
+    log_every: int = 50,
+    patience: int = None,
+    checkpoint_dir: str | Path = None,
+    selection_metric: str = "fer",  # fer or loss
+    threshold: float = 0.3,  # only when metrics is fer
+) -> dict:
+    """Train a model with mixed-channel data and multi-preset validation.
+
+    val_datasets maps preset name -> fixed-mode RSPositionDataset. Each epoch
+    the model is validated on every preset; the best checkpoint is chosen by
+    the mean metric across presets.
+
+    selection_metric:
+      "fer"  - mean hybrid-decoding FER across presets (threshold is used)
+      "loss" - mean validation loss across presets
+
+    If patience is set, training stops when the selection metric does not
+    improve for that many epochs, and the best weights are restored.
+
+    If checkpoint_dir is set, best.pth (on each improvement), last.pth (at the
+    end) and history.json are written there.
+
+    Returns the history dict (train_loss, per-preset val_loss/val_fer, plus
+    best_epoch, best_metric, selection_metric).
+    """
     if selection_metric not in {"loss", "fer"}:
         raise ValueError(f"selection_metric must be 'loss' or 'fer', got {selection_metric!r}")
 

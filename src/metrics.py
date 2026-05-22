@@ -1,18 +1,26 @@
+"""Metrics accumulation for decoder benchmarking: FER, BER, mask quality."""
+
 from dataclasses import dataclass
 from typing import Optional
 
 from .codec import NSYM, K
 
-# BM decoder can correct up to 2t = NSYM erasures (here: 32)
-# Predicted masks exceeding this bound will be truncated implicitly when
-# passed to BM; we track the "overflow" rate as diagnostic.
+# BM corrects errors and erasures under the bound 2*errors + erasures <= NSYM.
+# A predicted mask larger than NSYM erasures cannot be decoded at all: reedsolo
+# raises ReedSolomonError, ClassicDecoder returns None, and the block counts as
+# a decoder failure. We track the "overflow" rate as a diagnostic for how often
+# the neural mask blows the erasure budget.
 ERASURE_BUDGET = NSYM
 
 
 @dataclass
 class DecodeResult:
-    """ "Result of decoding one block by one decoder, everything a metrics
-    accumulator might need, in one place."""
+    """Result of decoding one block by one decoder.
+
+    Holds everything a metrics accumulator needs for a single block, in one
+    place: the decoded output, the ground truth, the true error positions,
+    and (for mask-producting decoders) the predicted postions.
+    """
 
     decoded: Optional[bytes]
     original: bytes
@@ -20,7 +28,7 @@ class DecodeResult:
     predicted_positions: Optional[set] = None
 
 
-def init_stats(decoder_names):
+def init_stats(decoder_names) -> dict:
     """Initialize a raw-counter dict for a set of decoders."""
     return {
         name: {
@@ -43,12 +51,12 @@ def init_stats(decoder_names):
     }
 
 
-def _count_bit_errors(decoded, original):
+def _count_bit_errors(decoded: bytes, original: bytes) -> int:
     """Hamming distance in bits between two byte sequences of equal length."""
     return sum(bin(a ^ b).count("1") for a, b in zip(decoded, original))
 
 
-def update_stats(stats, decoder_name, result):
+def update_stats(stats: dict, decoder_name: str, result: DecodeResult) -> None:
     """Update running counters for one decoder with one decode results."""
     s = stats[decoder_name]
     decoded = result.decoded
@@ -95,11 +103,12 @@ def update_stats(stats, decoder_name, result):
         s["overflow_num"] += 1
 
 
-def _safe_div(num, den):
+def _safe_div(num, den) -> float:
+    """Divide num by den, return NaN instead of raising on den == 0."""
     return num / den if den else float("nan")
 
 
-def finalize_stats(stats, num_samples):
+def finalize_stats(stats: dict, num_samples: int) -> dict:
     """Convert raw counters into final metrics."""
     out = {}
     for name, s in stats.items():

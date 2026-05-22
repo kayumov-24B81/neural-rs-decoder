@@ -1,12 +1,12 @@
+"""Validation metrics: loss and hybrid-decoding FER over a dataset."""
+
 import numpy as np
 import torch
 
 from .codec import NSYM, ClassicDecoder
 
-K = 223  # encoded symbols
 
-
-def evaluate_loss(model, loader, criterion, device):
+def evaluate_loss(model: torch.nn.Module, loader, criterion, device: str) -> float:
     """Compute average loss without gradient updates."""
     model.eval()
     total_loss = 0
@@ -18,7 +18,9 @@ def evaluate_loss(model, loader, criterion, device):
     return total_loss / len(loader)
 
 
-def evaluate_fer(model, val_dataset, threshold, device, batch_size=256):
+def evaluate_fer(
+    model: torch.nn.Module, val_dataset, threshold: float, device: str, batch_size: int = 256
+) -> float:
     """Frame Error Rate on a fixed val_dataset using hybrid (model + RS) decoding.
 
     val_dataset must be in fixed mode (provides .get_raw(idx)).

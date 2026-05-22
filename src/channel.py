@@ -1,4 +1,11 @@
+"""Synthetic channel models for RS codewords: Gilbert-Elliott, AWGN, erasure.
+
+Each channel returns a tuple (noisy_bytes, erasures, errors), where erasures
+and errors are lists of symbol positions. Channels are seeded via the global
+RNG (random / numpy); see utils.set_seed."""
+
 import random
+from collections.abc import Callable
 
 import numpy as np
 
@@ -9,7 +16,17 @@ GE_PRESETS = {
 }
 
 
-def gilbert_elliott_channel(codeword, p, r, h=0.0, k=0.5):
+def gilbert_elliott_channel(
+    codeword: bytes, p: float, r: float, h: float = 0.0, k: float = 0.5
+) -> tuple[bytes, list, list]:
+    """Apply a Gilbert-Elliott burst-error channel to a codeword.
+
+    The channel is a two-state Markov chain: 'good' (bit-error prob h) and
+    'bad' (bit-error prob k), with good->bad transition prob p and bad->good
+    transition prob r. Bit errors aggregated to symbol positions.
+
+    Returns (noisy_bytes, [], errors); the erasure slot is always empty."""
+
     noisy = bytearray(codeword)
     n = len(codeword)
     symbol_corrupted = [False] * n
@@ -35,7 +52,12 @@ def gilbert_elliott_channel(codeword, p, r, h=0.0, k=0.5):
     return bytes(noisy), [], errors
 
 
-def make_ge_channel(preset="moderate", **overrides):
+def make_ge_channel(preset: str = "moderate", **overrides) -> Callable[[bytes], tuple]:
+    """Build a GE channel callable from a named preset or 'custom'.
+
+    With preset='custom', parameters are taken entirely from overrides.
+    Otherwise overrides are merged on top of the named preset.
+    """
     if preset == "custom":
         params = overrides
     else:
@@ -51,7 +73,12 @@ def make_ge_channel(preset="moderate", **overrides):
     return channel_fn
 
 
-def erasure_channel(codeword, p_erase):
+def erasure_channel(codeword: bytes, p_erase: float) -> tuple[bytes, list, list]:
+    """Apply and erasure channel: each symbol is zeroed with probability p_erase.
+
+    Returns (noisy_bytes, erasures, []); the error slot is always empty,
+    since erased positions are reported as erasures, not errors.
+    """
     noisy = bytearray(codeword)
     erasures = []
     for i in range(len(noisy)):
@@ -61,8 +88,15 @@ def erasure_channel(codeword, p_erase):
     return bytes(noisy), erasures, []
 
 
-def awgn_channel(codeword, ebn0_db):
-    """AWGN channel with BPSK modulation and hard decision."""
+def awgn_channel(codeword: bytes, ebn0_db: float) -> tuple[bytes, list, list]:
+    """Apply an AWGN channel with BPSK modulation and hard-decision demod.
+
+    Bits are BPSK-mapped (0->+1, 1->-1), corrupted by Gaussian noise whose
+    variance is derived from Eb/N0 for RS(255, 223), then hard-decided.
+    A symbol counts as an error if any of its 8 bits flipped.
+
+    Returns (noisy_bytes, [], errors); the erasure slot is always empty.
+    """
     n = len(codeword)
     R = 223 / 255
     m = 8
@@ -91,7 +125,11 @@ AWGN_PRESETS = {
 }
 
 
-def make_awgn_channel(preset="moderate", **overrides):
+def make_awgn_channel(preset: str = "moderate", **overrides) -> Callable[[bytes], tuple]:
+    """Build and AWGN channel callable from a named preset or 'custom'.
+
+    With preset='custom', ebn0_db must be supplied via overrides.
+    """
     if preset == "custom":
         params = overrides
     else:

@@ -1,3 +1,5 @@
+"""RS(255,223) decoder benchmark: runs metrics, timing, and encoding passes."""
+
 import argparse
 import csv
 import time
@@ -19,7 +21,8 @@ from src.utils import build_input, load_config, load_model, set_seed
 # ARGUMENT PARSING
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the benchmark."""
     p = argparse.ArgumentParser(description="RS(255,223) decoder benchmark.")
     p.add_argument("--config", required=True, help="Path to YAML config.")
     p.add_argument("--model", default=None, help="Override model.path from config.")
@@ -53,7 +56,8 @@ def parse_args():
     return p.parse_args()
 
 
-def apply_overrides(config, args):
+def apply_overrides(config: dict, args: argparse.Namespace) -> dict:
+    """Apply CLI overrides on top of the loaded config dict."""
     if args.model is not None:
         config["model"]["path"] = args.model
     if args.channel is not None:
@@ -86,7 +90,8 @@ def apply_overrides(config, args):
 # SETUP
 
 
-def resolve_device(device_spec):
+def resolve_device(device_spec: str) -> str:
+    """Resolve a device spec ('auto'|'cpu'|'cuda') to a concrete device."""
     if device_spec == "auto":
         return "cuda" if torch.cuda.is_available() else "cpu"
     if device_spec == "cuda" and not torch.cuda.is_available():
@@ -94,7 +99,8 @@ def resolve_device(device_spec):
     return device_spec
 
 
-def build_channel(cfg):
+def build_channel(cfg: dict):
+    """Build a channel callable from the config's channel section."""
     ch = cfg["channel"]
     if ch["type"] == "gilbert_elliott":
         preset = ch["preset"]
@@ -108,7 +114,8 @@ def build_channel(cfg):
     raise ValueError(f"Unknown channel type: {ch['type']}")
 
 
-def build_model(cfg, device):
+def build_model(cfg: dict, device: str) -> torch.nn.Module:
+    """Load the neural model with weights from the configured path."""
     m = cfg["model"]
     path = m["path"]
     if not Path(path).exists():
@@ -124,7 +131,8 @@ def build_model(cfg, device):
     return load_model(model, path, device=device)
 
 
-def build_decoders(cfg, device):
+def build_decoders(cfg: dict, device: str) -> dict:
+    """Build the set of enabled decoders (classic/oracle/neural)."""
     dec_cfg = cfg["decoders"]
     decoders = {}
     if dec_cfg.get("classic", False):
@@ -147,7 +155,10 @@ def build_decoders(cfg, device):
 # PASSES
 
 
-def run_metrics_pass(decoders, channel_fn, num_samples, nsym, verbose):
+def run_metrics_pass(
+    decoders: dict, channel_fn, num_samples: int, nsym: int, verbose: bool
+) -> dict:
+    """Run the quality pass: decode num_samples blocks, accumulate metrics."""
     stats = init_stats(decoders.keys())
     iterator = range(num_samples)
     if verbose:
@@ -185,7 +196,10 @@ def run_metrics_pass(decoders, channel_fn, num_samples, nsym, verbose):
     return finalize_stats(stats, num_samples)
 
 
-def run_timing_pass(decoders, channel_fn, num_samples, warmup, nsym, verbose):
+def run_timing_pass(
+    decoders: dict, channel_fn, num_samples: int, warmup: int, nsym: int, verbose: bool
+) -> dict:
+    """Run the decoding-timing pass: measure per-frame decode time per decoder."""
     test_data = []
     for _ in range(num_samples + warmup):
         msg = np.random.bytes(K)
@@ -228,7 +242,8 @@ def run_timing_pass(decoders, channel_fn, num_samples, warmup, nsym, verbose):
     return results
 
 
-def run_encoding_pass(num_samples, warmup, verbose):
+def run_encoding_pass(num_samples: int, warmup: int, verbose: bool) -> dict:
+    """Run the encoding-timing pass: measure per-frame RS encode time."""
     test_msgs = [np.random.bytes(K) for _ in range(num_samples + warmup)]
 
     for msg in test_msgs[:warmup]:
@@ -252,7 +267,8 @@ def run_encoding_pass(num_samples, warmup, verbose):
 # OUTPUT
 
 
-def _make_run_id(cfg):
+def _make_run_id(cfg: dict) -> str:
+    """Build a unique run id: timestamp plus a tag derived from config."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     tag = cfg["benchmark"].get("tag")
     if tag is None:
@@ -264,7 +280,10 @@ def _make_run_id(cfg):
     return f"{timestamp}_{tag}"
 
 
-def save_results(metrics, timing, encoding, cfg, device, out_dir):
+def save_results(
+    metrics: dict, timing: dict, encoding: dict, cfg: dict, device: str, out_dir: str | Path
+) -> tuple:
+    """Write the results CSV and the run-context YAML; return their paths."""
     run_id = _make_run_id(cfg)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -312,7 +331,7 @@ def save_results(metrics, timing, encoding, cfg, device, out_dir):
 # MAIN
 
 
-def main():
+def main() -> None:
     args = parse_args()
     cfg = load_config(args.config)
     cfg = apply_overrides(cfg, args)
@@ -343,7 +362,7 @@ def main():
     )
 
     if verbose:
-        print("Pass 2/3 decoding timing")
+        print("Pass 2/3: decoding timing")
     timing = run_timing_pass(
         decoders,
         channel_fn,
