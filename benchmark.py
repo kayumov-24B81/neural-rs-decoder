@@ -12,7 +12,7 @@ import yaml
 from tqdm import tqdm
 
 from src.channel import erasure_channel, make_ge_channel
-from src.codec import NSYM, ClassicDecoder, HybridDecoder, K, N, OracleDecoder, encode
+from src.codec import NSYM, ClassicDecoder, HybridDecoder, K, N, OracleDecoder, T, encode
 from src.metrics import DecodeResult, finalize_stats, init_stats, update_stats
 from src.model import PositionPredictor
 from src.runtime import env_info, git_info
@@ -158,8 +158,18 @@ def build_decoders(cfg: dict, device: str) -> dict:
 def run_metrics_pass(
     decoders: dict, channel_fn, num_samples: int, nsym: int, verbose: bool
 ) -> dict:
-    """Run the quality pass: decode num_samples blocks, accumulate metrics."""
-    stats = init_stats(decoders.keys())
+    """Run the quality pass: decode num_samples blocks, accumulate metrics.
+
+    Metrics are accumulated into three buckets: all blocks, block with
+    <=T errors (within BM correction capability), and blocks with > T
+    errors. Returns a dict with finalized metrics and block counts per bucket.
+    """
+    stats_all = init_stats(decoders.keys())
+    stats_le16 = init_stats(decoders.keys())
+    stats_gt16 = init_stats(decoders.keys())
+    n_le16 = 0
+    n_gt16 = 0
+
     iterator = range(num_samples)
     if verbose:
         iterator = tqdm(iterator, desc="metrics", unit="block")
@@ -170,6 +180,12 @@ def run_metrics_pass(
         noisy, _, _ = channel_fn(codeword)
         true_errors = {i for i in range(N) if noisy[i] != codeword[i]}
         features = build_input(noisy, nsym) if "neural" in decoders else None
+
+        is_le16 = len(true_errors) <= T
+        if is_le16:
+            n_le16 += 1
+        else:
+            n_gt16 += 1
 
         for name, decoder in decoders.items():
             if name == "classic":
@@ -191,9 +207,18 @@ def run_metrics_pass(
                 true_errors=true_errors,
                 predicted_positions=predicted,
             )
-            update_stats(stats, name, result)
+            update_stats(stats_all, name, result)
+            if is_le16:
+                update_stats(stats_le16, name, result)
+            else:
+                update_stats(stats_gt16, name, result)
 
-    return finalize_stats(stats, num_samples)
+    return {
+        "all": finalize_stats(stats_all, num_samples),
+        "le16": finalize_stats(stats_le16, n_le16) if n_le16 else None,
+        "gt16": finalize_stats(stats_gt16, n_gt16) if n_gt16 else None,
+        "counts": {"all": num_samples, "le16": n_le16, "gt16": n_gt16},
+    }
 
 
 def run_timing_pass(
@@ -292,6 +317,8 @@ def save_results(
 
     columns = [
         "decoder",
+        "error_bucket",
+        "n_blocks",
         "fer",
         "fer_ci_low",
         "fer_ci_high",
@@ -316,12 +343,21 @@ def save_results(
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=columns)
         writer.writeheader()
-        for name, m in metrics.items():
-            row = {"decoder": name, **m}
-            row["per_frame_ms"] = timing[name]["per_frame_ms"]
-            row["encoding_time_ms"] = encoding["per_frame_ms"]
-            row["decode_to_encode_ratio"] = timing[name]["per_frame_ms"] / encoding["per_frame_ms"]
-            writer.writerow(row)
+        for bucket in ("all", "le16", "gt16"):
+            bucket_metrics = metrics[bucket]
+            if bucket_metrics is None:
+                continue
+            n_blocks = metrics["counts"][bucket]
+            for name, m in bucket_metrics.items():
+                row = {"decoder": name, "error_bucket": bucket, "n_blocks": n_blocks, **m}
+                # timing/encoding are bucket-independent: attach only to 'all'
+                if bucket == "all":
+                    row["per_frame_ms"] = timing[name]["per_frame_ms"]
+                    row["encoding_time_ms"] = encoding["per_frame_ms"]
+                    row["decode_to_encode_ratio"] = (
+                        timing[name]["per_frame_ms"] / encoding["per_frame_ms"]
+                    )
+                writer.writerow(row)
 
     context = {
         "run_id": run_id,
@@ -334,6 +370,32 @@ def save_results(
         yaml.safe_dump(context, f, sort_keys=False, default_flow_style=False)
 
     return csv_path, yaml_path
+
+
+# SUMMARY
+
+
+def print_summary(metrics: dict) -> None:
+    """Print a compact human-readable summary of the metrics pass."""
+    counts = metrics["counts"]
+    print()
+    print("=" * 64)
+    print(
+        f"Blocks: {counts['all']} total  |  <={T} err: {counts['le16']}  "
+        f">{T} err: {counts['gt16']}"
+    )
+    print("=" * 64)
+    for name in metrics["all"]:
+        m_all = metrics["all"][name]
+        fer = m_all["fer"]
+        lo, hi = m_all["fer_ci_low"], m_all["fer_ci_high"]
+        fer_le = metrics["le16"][name]["fer"] if metrics["le16"] else float("nan")
+        fer_gt = metrics["gt16"][name]["fer"] if metrics["gt16"] else float("nan")
+        print(
+            f"  {name:8s} FER={fer:.4f} [{lo:.4f}, {hi:.4f}]   "
+            f"(<={T}: {fer_le:.4f}  >{T}: {fer_gt:.4f})"
+        )
+    print("=" * 64)
 
 
 # MAIN
@@ -396,6 +458,9 @@ def main() -> None:
         device,
         cfg["output"]["dir"],
     )
+
+    print_summary(metrics)
+
     print(f"Results: {csv_path}")
     print(f"Context: {yaml_path}")
 
