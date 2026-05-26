@@ -3,7 +3,14 @@ import math
 import pytest
 
 from src.codec import K
-from src.metrics import ERASURE_BUDGET, DecodeResult, finalize_stats, init_stats, update_stats
+from src.metrics import (
+    ERASURE_BUDGET,
+    DecodeResult,
+    finalize_stats,
+    init_stats,
+    update_stats,
+    wilson_interval,
+)
 
 # HELPERS
 
@@ -359,3 +366,37 @@ def test_finalize_zero_samples_raises():
     stats = init_stats(["d"])
     with pytest.raises(ZeroDivisionError):
         finalize_stats(stats, num_samples=0)
+
+
+# Wilson interval tests
+
+
+def test_wilson_zero_count_low_is_zero():
+    lo, hi = wilson_interval(0, 1000)
+    assert lo == 0.0
+    assert 0 < hi < 0.01
+
+
+def test_wilson_full_count_high_is_one():
+    lo, hi = wilson_interval(1000, 1000)
+    assert hi == 1.0
+    assert 0.99 < lo < 1.0
+
+
+def test_wilson_interval_brackets_point_estimate():
+    lo, hi = wilson_interval(500, 1000)
+    assert lo < 0.5 < hi
+
+
+def test_wilson_width_shrinks_with_n():
+    _, hi_small = wilson_interval(50, 100)
+    lo_small, _ = wilson_interval(50, 100)
+    width_small = hi_small - lo_small
+    lo_big, hi_big = wilson_interval(5000, 10000)
+    width_big = hi_big - lo_big
+    assert width_big < width_small
+
+
+def test_wilson_zero_trials_return_nan():
+    lo, hi = wilson_interval(0, 0)
+    assert math.isnan(lo) and math.isnan(hi)
