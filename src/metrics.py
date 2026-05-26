@@ -1,5 +1,6 @@
 """Metrics accumulation for decoder benchmarking: FER, BER, mask quality."""
 
+import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -26,6 +27,23 @@ class DecodeResult:
     original: bytes
     true_errors: set
     predicted_positions: Optional[set] = None
+
+
+def wilson_interval(count: int, n: int, z: float = 1.96) -> tuple:
+    """Wilson score confidence interval for a binomial proportion.
+
+    Returns (low, high) for the given success count out of n trials.
+    Default z=1.96 corresponds to a 95% confidence level. Correct near
+    p=0 and p=1, unlike the normal approximation; returns (nan, nan)
+    for n == 0."""
+
+    if n == 0:
+        return (float("nan"), float("nan"))
+    p = count / n
+    denom = 1 + z**2 / n
+    center = (p + z**2 / (2 * n)) / denom
+    margin = (z / denom) * math.sqrt(p * (1 - p) / n + z**2 / (4 * n**2))
+    return (max(0.0, center - margin), min(1.0, center + margin))
 
 
 def init_stats(decoder_names) -> dict:
@@ -112,25 +130,41 @@ def finalize_stats(stats: dict, num_samples: int) -> dict:
     """Convert raw counters into final metrics."""
     out = {}
     for name, s in stats.items():
+        fer_lo, fer_hi = wilson_interval(s["fer_num"], num_samples)
+        dfr_lo, dfr_hi = wilson_interval(s["dfr_num"], num_samples)
         metrics = {
             "fer": s["fer_num"] / num_samples,
+            "fer_ci_low": fer_lo,
+            "fer_ci_high": fer_hi,
             "dfr": s["dfr_num"] / num_samples,
+            "dfr_ci_low": dfr_lo,
+            "dfr_ci_high": dfr_hi,
             "ber": _safe_div(s["ber_num"], s["ber_den"]),
         }
         if s["has_mask"]:
             tp, fp, fn = s["tp"], s["fp"], s["fn"]
             metrics["precision"] = _safe_div(tp, tp + fp)
             metrics["recall"] = _safe_div(tp, tp + fn)
+            mca_lo, mca_hi = wilson_interval(s["mask_covers_all_num"], num_samples)
+            ovf_lo, ovf_hi = wilson_interval(s["overflow_num"], num_samples)
             metrics["mask_covers_all"] = s["mask_covers_all_num"] / num_samples
+            metrics["mask_covers_all_ci_low"] = mca_lo
+            metrics["mask_covers_all_ci_high"] = mca_hi
             metrics["num_erasures_mean"] = s["num_erasures_sum"] / num_samples
             metrics["num_erasures_max"] = s["num_erasures_max"]
             metrics["overflow_rate"] = s["overflow_num"] / num_samples
+            metrics["overflow_rate_ci_low"] = ovf_lo
+            metrics["overflow_rate_ci_high"] = ovf_hi
         else:
             metrics["precision"] = float("nan")
             metrics["recall"] = float("nan")
             metrics["mask_covers_all"] = float("nan")
+            metrics["mask_covers_all_ci_low"] = float("nan")
+            metrics["mask_covers_all_ci_high"] = float("nan")
             metrics["num_erasures_mean"] = float("nan")
             metrics["num_erasures_max"] = float("nan")
             metrics["overflow_rate"] = float("nan")
+            metrics["overflow_rate_ci_low"] = float("nan")
+            metrics["overflow_rate_ci_high"] = float("nan")
         out[name] = metrics
     return out
