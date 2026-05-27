@@ -15,6 +15,7 @@ from src.channel import erasure_channel, make_ge_channel
 from src.codec import NSYM, ClassicDecoder, HybridDecoder, K, N, OracleDecoder, T, encode
 from src.metrics import DecodeResult, finalize_stats, init_stats, update_stats
 from src.model import PositionPredictor
+from src.pcap_source import load_pcap_messages
 from src.runtime import env_info, git_info
 from src.utils import build_input, load_config, load_model, set_seed
 
@@ -53,6 +54,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Override model.threshold (neural decoder mask threshold).",
     )
+    p.add_argument(
+        "--message-source",
+        default=None,
+        choices=["random", "pcap"],
+        help="Override message_source (random|pcap).",
+    )
     return p.parse_args()
 
 
@@ -76,6 +83,8 @@ def apply_overrides(config: dict, args: argparse.Namespace) -> dict:
         config["seed"] = args.seed
     if args.threshold is not None:
         config["model"]["threshold"] = args.threshold
+    if args.message_source is not None:
+        config["message_source"] = args.message_source
     if args.decoders is not None:
         valid = {"classic", "oracle", "neural"}
         requested = {d.strip() for d in args.decoders.split(",") if d.strip()}
@@ -97,6 +106,28 @@ def resolve_device(device_spec: str) -> str:
     if device_spec == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("Requested device='cuda' but CUDA is not available.")
     return device_spec
+
+
+def make_message_source(cfg: dict):
+    """Return a zero-arg callable yielding one K-byte message per call.
+
+    With message_sources='pcap', messages are real payloads from a pcap
+    file, cycled if exhausted. With 'random', messages are random bytes.
+    """
+    src = cfg.get("message_source", "random")
+    if src == "random":
+        return lambda: np.random.bytes(K)
+    if src == "pcap":
+        messages = load_pcap_messages(cfg["pcap"]["path"], msg_len=K)
+        state = {"i": 0}
+
+        def next_message():
+            msg = messages[state["i"] % len(messages)]
+            state["i"] += 1
+            return msg
+
+        return next_message
+    raise ValueError(f"Unknown message_source: {src!r}")
 
 
 def build_channel(cfg: dict):
@@ -156,7 +187,7 @@ def build_decoders(cfg: dict, device: str) -> dict:
 
 
 def run_metrics_pass(
-    decoders: dict, channel_fn, num_samples: int, nsym: int, verbose: bool
+    decoders: dict, channel_fn, next_message, num_samples: int, nsym: int, verbose: bool
 ) -> dict:
     """Run the quality pass: decode num_samples blocks, accumulate metrics.
 
@@ -175,7 +206,7 @@ def run_metrics_pass(
         iterator = tqdm(iterator, desc="metrics", unit="block")
 
     for _ in iterator:
-        msg = np.random.bytes(K)
+        msg = msg = next_message()
         codeword = encode(msg)
         noisy, _, _ = channel_fn(codeword)
         true_errors = {i for i in range(N) if noisy[i] != codeword[i]}
@@ -222,12 +253,18 @@ def run_metrics_pass(
 
 
 def run_timing_pass(
-    decoders: dict, channel_fn, num_samples: int, warmup: int, nsym: int, verbose: bool
+    decoders: dict,
+    channel_fn,
+    next_message,
+    num_samples: int,
+    warmup: int,
+    nsym: int,
+    verbose: bool,
 ) -> dict:
     """Run the decoding-timing pass: measure per-frame decode time per decoder."""
     test_data = []
     for _ in range(num_samples + warmup):
-        msg = np.random.bytes(K)
+        msg = next_message()
         codeword = encode(msg)
         noisy, _, _ = channel_fn(codeword)
         features = build_input(noisy, nsym) if "neural" in decoders else None
@@ -267,9 +304,9 @@ def run_timing_pass(
     return results
 
 
-def run_encoding_pass(num_samples: int, warmup: int, verbose: bool) -> dict:
+def run_encoding_pass(next_message, num_samples: int, warmup: int, verbose: bool) -> dict:
     """Run the encoding-timing pass: measure per-frame RS encode time."""
-    test_msgs = [np.random.bytes(K) for _ in range(num_samples + warmup)]
+    test_msgs = [next_message() for _ in range(num_samples + warmup)]
 
     for msg in test_msgs[:warmup]:
         encode(msg)
@@ -419,13 +456,16 @@ def main() -> None:
 
     channel_fn = build_channel(cfg)
     decoders = build_decoders(cfg, device)
+    next_message = make_message_source(cfg)
 
     if verbose:
         print(f"Decoders: {list(decoders.keys())}")
+        print(f"Messages: {cfg.get('message_source', 'random')}")
         print("Pass 1/3: metrics")
     metrics = run_metrics_pass(
         decoders,
         channel_fn,
+        next_message,
         num_samples=cfg["benchmark"]["num_samples"],
         nsym=cfg["code"]["nsym"],
         verbose=verbose,
@@ -436,6 +476,7 @@ def main() -> None:
     timing = run_timing_pass(
         decoders,
         channel_fn,
+        next_message,
         num_samples=cfg["timing"]["num_samples"],
         warmup=cfg["timing"]["warmup"],
         nsym=cfg["code"]["nsym"],
@@ -445,6 +486,7 @@ def main() -> None:
     if verbose:
         print("Pass 3/3: encoding timing")
     encoding = run_encoding_pass(
+        next_message,
         num_samples=cfg["timing"]["num_samples"],
         warmup=cfg["timing"]["warmup"],
         verbose=verbose,
